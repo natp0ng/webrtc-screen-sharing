@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Screen Sharing (Host)</title>
+</head>
+
+<body>
+	<h1>Screen Sharing</h1>
+	<video id="localVideo" autoplay muted></video>
+	<script type="module">
+		import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js";
+		const token = "SIGNALING123";
+		const socket = new io("http://localhost:3030", {
+			auth: { token },
+			autoConnect: false, // disables auto connection, by default the client would connect to the server as soon as the io() object is instatiated
+			reconnection: false, // disables auto reconnection, this can occur when for example the host server disconnects. When set to true, the client would keep trying to reconnect
+			// for a complete list of the available options, see https://socket.io/docs/v4/client-api/#new-Manager-url-options
+		});
+		socket.connect();
+		localStorage.debug = '*';
+
+
+		async function startScreenShare() {
+			try {
+				const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+
+				const localVideo = document.getElementById('localVideo');
+				localVideo.srcObject = stream;
+
+				const pc = new RTCPeerConnection(); // Create a single RTCPeerConnection
+
+				stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+				pc.onicecandidate = event => {
+					if (event.candidate) {
+						socket.emit('candidate', event.candidate);
+					}
+				};
+
+				const offer = await pc.createOffer();
+				await pc.setLocalDescription(offer);
+
+				socket.emit('offer', offer);
+
+				socket.on('answer', async answer => {
+					await pc.setRemoteDescription(answer);
+				});
+
+				socket.on('candidate', async candidate => {
+					await pc.addIceCandidate(candidate);
+				});
+
+				pc.ontrack = event => {
+					// This is the host's side; no need to handle the track here
+				};
+			} catch (error) {
+				console.error('Error starting screen share:', error);
+			}
+		}
+
+		startScreenShare();
+	</script>
+</body>
+
+</html>
